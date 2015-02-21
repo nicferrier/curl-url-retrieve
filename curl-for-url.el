@@ -4,7 +4,7 @@
 
 ;; Author: Nic Ferrier <nferrier@ferrier.me.uk>
 ;; Keywords: hypermedia
-;; Version: 0.0.1
+;; Version: 0.0.2
 ;; Package-requires: ((noflet "0.0.15"))
 
 ;; This program is free software; you can redistribute it and/or modify
@@ -32,40 +32,76 @@
 ;;; Code:
 
 (require 'noflet)
+(require 'url-http)
 
 (defmacro comment (&rest code))
 
 ;; this is how url-retrieve works.
 (comment
- (url-retrieve
-  "http://nic.ferrier.me.uk"
-  (lambda (status &rest cbargs)
-    (message "url retrieve done")))
 
- ;; This is how the curl works
- (curl-call
-  (url-generic-parse-url (url-encode-url "http://nic.ferrier.me.uk"))
-  nil
-  (lambda (&rest args)
+ (url-retrieve
+  "http://localhost:8081"
+  (lambda (status &rest cbargs)
     (message
      "url retrieve done: [%s] %s"
      url-http-response-status
      (buffer-substring-no-properties
-      url-http-end-of-headers (+ url-http-end-of-headers 50))))))
+      url-http-end-of-headers (+ url-http-end-of-headers 50)))))
 
-(defun curl-call (url data callback &optional cbargs)
+ (curl-call
+  (url-generic-parse-url (url-encode-url "http://localhost:8081"))
+  nil
+  (lambda (status &rest cbargs)
+    (message
+     "url retrieve done: [%s] %s"
+     url-http-response-status
+     (buffer-substring-no-properties
+      url-http-end-of-headers (+ url-http-end-of-headers 50))))
+     '(nil))
+
+ ;; This is how the curl works
+ (noflet ((url-http (url callback cbargs &optional retry-buffer)
+            (curl-call url nil callback cbargs)))
+   (url-retrieve
+     "http://localhost:8081"
+     (lambda (status &rest cbargs)
+       (message
+        "url retrieve done: [%s] %s"
+        url-http-response-status
+        (buffer-substring-no-properties
+         url-http-end-of-headers (+ url-http-end-of-headers 50))))))
+ )
+
+(defun curl/sentinel (proc evt)
+  "Sentinel for `curl-call'."
+  (cl-case (intern (car (split-string evt "\n")))
+    ('finished
+     (with-current-buffer (process-buffer proc)
+       (noflet ((url-http-mark-connection-as-free (&rest params) nil))
+         (let ((url-http-end-of-headers
+                (save-excursion
+                  (goto-char (point-min))
+                  (re-search-forward "\r\n\r\n" nil t))))
+           (save-excursion
+             (goto-char (point-min))
+             (while (re-search-forward "\r\n" url-http-end-of-headers t)
+               (replace-match "\n")))
+           (url-http-end-of-document-sentinel proc evt)))))))
+
+(defun curl-call (url data callback cbargs)
   (let* (connection ; dummy var for url-retrieve interop
-         (retry-buffer (generate-new-buffer "http-curl"))
          (url-string (format "%s://%s:%s%s"
                              (url-type url)
                              (url-host url)
                              (url-port url)
                              (url-filename url)))
-         (curl-name (format "*curl-%s-%s*" url-string url-request-method))
+         (curl-name (format "*curl-%s-%s*" url-string (or url-request-method "GET")))
+         (retry-buffer (generate-new-buffer curl-name))
          (proc
           (start-process
-           curl-name curl-name
-           "curl" "-i" url-string)))
+           curl-name
+           (generate-new-buffer curl-name)
+           "curl" "-s" "-i" url-string)))
     (with-current-buffer (process-buffer proc) ; stuff ripped out of url-http
       (mm-disable-multibyte)
       (setq url-current-object url mode-line-format "%b [%s]")
@@ -105,23 +141,26 @@
             url-http-no-retry retry-buffer
             url-http-connection-opened nil
             url-http-proxy url-using-proxy))
-    (set-process-sentinel
-     proc
-     (lambda (proc evt)
-       (cl-case (intern (car (split-string evt "\n")))
-         ('finished
-          (with-current-buffer (process-buffer proc)
-            (noflet ((url-http-mark-connection-as-free (&rest params) nil))
-              (let ((url-http-end-of-headers
-                     (save-excursion
-                       (goto-char (point-min))
-                       (re-search-forward "\r\n\r\n" nil t))))
-                (url-http-end-of-url-request-method
-                 document-sentinel proc evt))))))))))
+    (set-process-sentinel proc 'curl/sentinel)))
 
 (defun url-http-with-curl (url callback cbargs &optional retry-buffer)
   (curl-call url callback cbargs))
 
+(defvar curl-url-retrieve-original nil)
+
+;;;###autoload
+(defun curl-for-url-install ()
+  "Replaces the url-retrieve function with a curl one."
+  (unless curl-url-retrieve-original
+    (fset 'curl-url-retrieve-original (symbol-function 'url-http))
+    (fset 'url-http (symbol-function 'url-http-with-curl))))
+
+;;;###autoload
+(defun curl-for-url-uninstall ()
+  "Restores `url-http' after a `curl-for-url-install'."
+  (when curl-url-retrieve-original
+    (fset 'url-http (symbol-function 'curl-url-retrieve-orginal))
+    (fset 'curl-url-retrieve-original nil)))
 
 (provide 'curl-for-url)
 
