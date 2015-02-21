@@ -1,4 +1,4 @@
-;;; curl-for-url.el --- use url-retrieve with curl doing the work  -*- lexical-binding: t; -*-
+;;; curl-for-url.el --- use url-retrieve with curl doing the work 
 
 ;; Copyright (C) 2015  Nic Ferrier
 
