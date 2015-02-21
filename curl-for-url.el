@@ -20,6 +20,7 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+
 ;;; Commentary:
 
 ;; Sometimes curl is more reliable than Emacs internal url stuff.
@@ -27,7 +28,6 @@
 ;; This provides the `url-retrieve' function but with curl.  This is
 ;; useful in weird environments where curl does better than
 ;; `url-retrieve'.
-
 
 ;;; Code:
 
@@ -38,7 +38,6 @@
 
 ;; this is how url-retrieve works.
 (comment
-
  (url-retrieve
   "http://localhost:8081"
   (lambda (status &rest cbargs)
@@ -47,21 +46,17 @@
      url-http-response-status
      (buffer-substring-no-properties
       url-http-end-of-headers (+ url-http-end-of-headers 50)))))
-
- (curl-call
-  (url-generic-parse-url (url-encode-url "http://localhost:8081"))
-  nil
-  (lambda (status &rest cbargs)
-    (message
-     "url retrieve done: [%s] %s"
-     url-http-response-status
-     (buffer-substring-no-properties
-      url-http-end-of-headers (+ url-http-end-of-headers 50))))
-     '(nil))
-
  ;; This is how the curl works
  (noflet ((url-http (url callback cbargs &optional retry-buffer)
             (curl-call url nil callback cbargs)))
+   ;; Setup an elnode with a redirector, for example:
+   ;;
+   ;;  (elnode-start
+   ;;    (lambda (httpcon)
+   ;;      (elnode-send-redirect
+   ;;       httpcon
+   ;;       "http://nic.ferrier.me.uk/stuff/css/site.css"))
+   ;;    :port 8081)
    (url-retrieve
      "http://localhost:8081"
      (lambda (status &rest cbargs)
@@ -69,8 +64,7 @@
         "url retrieve done: [%s] %s"
         url-http-response-status
         (buffer-substring-no-properties
-         url-http-end-of-headers (+ url-http-end-of-headers 50))))))
- )
+         url-http-end-of-headers (+ url-http-end-of-headers 50)))))))
 
 (defun curl/sentinel (proc evt)
   "Sentinel for `curl-call'."
@@ -89,6 +83,7 @@
            (url-http-end-of-document-sentinel proc evt)))))))
 
 (defun curl-call (url data callback cbargs)
+  "Do curl for url-retrieval."
   (let* (connection ; dummy var for url-retrieve interop
          (url-string (format "%s://%s:%s%s"
                              (url-type url)
@@ -97,11 +92,9 @@
                              (url-filename url)))
          (curl-name (format "*curl-%s-%s*" url-string (or url-request-method "GET")))
          (retry-buffer (generate-new-buffer curl-name))
-         (proc
-          (start-process
-           curl-name
-           (generate-new-buffer curl-name)
-           "curl" "-s" "-i" url-string)))
+         (args (list "curl" "-s" "-i" url-string))
+         (proc (apply 'start-process
+                      (append (list curl-name (generate-new-buffer curl-name)) args))))
     (with-current-buffer (process-buffer proc) ; stuff ripped out of url-http
       (mm-disable-multibyte)
       (setq url-current-object url mode-line-format "%b [%s]")
