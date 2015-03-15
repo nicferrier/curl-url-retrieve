@@ -134,7 +134,8 @@
             url-http-no-retry retry-buffer
             url-http-connection-opened nil
             url-http-proxy url-using-proxy))
-    (set-process-sentinel proc 'curl/sentinel)))
+    (set-process-sentinel proc 'curl/sentinel)
+    (process-buffer proc)))
 
 (defun url-http-with-curl (url callback cbargs &optional retry-buffer)
   (curl-call url nil callback cbargs))
