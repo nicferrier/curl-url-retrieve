@@ -137,7 +137,7 @@
     (set-process-sentinel proc 'curl/sentinel)))
 
 (defun url-http-with-curl (url callback cbargs &optional retry-buffer)
-  (curl-call url callback cbargs))
+  (curl-call url nil callback cbargs))
 
 (defvar curl-url-retrieve-original nil)
 
