@@ -84,8 +84,7 @@
 
 (defun curl-call (url data callback cbargs)
   "Do curl for url-retrieval."
-  (let* (connection ; dummy var for url-retrieve interop
-         (url-string (format "%s://%s:%s%s"
+  (let* ((url-string (format "%s://%s:%s%s"
                              (url-type url)
                              (url-host url)
                              (url-port url)
@@ -123,7 +122,14 @@
       (setq url-http-method (or url-request-method "GET")
             url-http-extra-headers url-request-extra-headers
             url-http-data url-request-data
-            url-http-process connection
+            ;; `url-http' will close the connection if:
+            ;;
+            ;;   - There is not a "Connection: keep-alive" header (HTTP/1.0)
+            ;;   - There is a "Connection: close" header (HTTP/1.1 and greater)
+            ;;
+            ;; That means `url-http-process' cannot be `nil'.  We have to
+            ;; assign it to a process object.
+            url-http-process proc
             url-http-chunked-length nil
             url-http-chunked-start nil
             url-http-chunked-counter 0
@@ -134,10 +140,11 @@
             url-http-no-retry retry-buffer
             url-http-connection-opened nil
             url-http-proxy url-using-proxy))
-    (set-process-sentinel proc 'curl/sentinel)))
+    (set-process-sentinel proc 'curl/sentinel)
+    (process-buffer proc)))
 
 (defun url-http-with-curl (url callback cbargs &optional retry-buffer)
-  (curl-call url callback cbargs))
+  (curl-call url nil callback cbargs))
 
 (defvar curl-url-retrieve-original nil)
 
