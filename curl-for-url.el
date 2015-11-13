@@ -96,7 +96,8 @@
                              (url-host url)
                              (url-port url)
                              (url-filename url)))
-         (curl-name (format "*curl-%s-%s*" url-string (or url-request-method "GET")))
+         (url-request-method (or url-request-method "GET"))
+         (curl-name (format "*curl-%s-%s*" url-string url-request-method))
          (retry-buffer (generate-new-buffer curl-name))
          (args `("curl" "--silent" "--include"
                  ,@(if (string= "HEAD" url-request-method)
@@ -137,7 +138,7 @@
                      url-http-connection-opened
                      url-http-proxy))
         (set (make-local-variable var) nil))
-      (setq url-http-method (or url-request-method "GET")
+      (setq url-http-method url-request-method
             url-http-extra-headers url-request-extra-headers
             url-http-data url-request-data
             ;; `url-http' will close the connection if:
