@@ -82,6 +82,13 @@
                (replace-match "\n")))
            (url-http-end-of-document-sentinel proc evt)))))))
 
+(defun curl-for-url--headers-to-args (headers)
+  "Convert header alist to curl arguments."
+  (apply #'append
+         (mapcar (lambda (pair)
+                   (list "--header" (format "%s: %s" (car pair) (cdr pair))))
+                 headers)))
+
 (defun curl-call (url data callback cbargs)
   "Do curl for url-retrieval."
   (let* ((url-string (format "%s://%s:%s%s"
@@ -91,9 +98,20 @@
                              (url-filename url)))
          (curl-name (format "*curl-%s-%s*" url-string (or url-request-method "GET")))
          (retry-buffer (generate-new-buffer curl-name))
-         (args (list "curl" "-s" "-i" url-string))
-         (proc (apply 'start-process
-                      (append (list curl-name (generate-new-buffer curl-name)) args))))
+         (args `("curl" "--silent" "--include"
+                 ,@(if (string= "HEAD" url-request-method)
+                       (list "--head")
+                     (list "--request" url-request-method))
+                 ,@(if url-request-data (list "--data-binary" "@-") '())
+                 ,@(curl-for-url--headers-to-args url-request-extra-headers)
+                 ,url-string))
+         (proc (let ((process-connection-type nil))
+                 (apply 'start-process
+                        curl-name (generate-new-buffer curl-name) args))))
+    (when url-request-data
+      (set-process-coding-system proc 'binary 'binary)
+      (process-send-string proc url-request-data)
+      (process-send-eof proc))
     (with-current-buffer (process-buffer proc) ; stuff ripped out of url-http
       (mm-disable-multibyte)
       (setq url-current-object url mode-line-format "%b [%s]")
