@@ -82,19 +82,37 @@
                (replace-match "\n")))
            (url-http-end-of-document-sentinel proc evt)))))))
 
-(defun curl-call (url data callback cbargs)
+(defun curl-for-url--headers-to-args (headers)
+  "Convert header alist to curl arguments."
+  (apply #'append
+         (mapcar (lambda (pair)
+                   (list "--header" (format "%s: %s" (car pair) (cdr pair))))
+                 headers)))
+
+(defun curl-call (url callback cbargs &optional retry-buffer)
   "Do curl for url-retrieval."
-  (let* (connection ; dummy var for url-retrieve interop
-         (url-string (format "%s://%s:%s%s"
+  (let* ((url-string (format "%s://%s:%s%s"
                              (url-type url)
                              (url-host url)
                              (url-port url)
                              (url-filename url)))
-         (curl-name (format "*curl-%s-%s*" url-string (or url-request-method "GET")))
+         (url-request-method (or url-request-method "GET"))
+         (curl-name (format "*curl-%s-%s*" url-string url-request-method))
          (retry-buffer (generate-new-buffer curl-name))
-         (args (list "curl" "-s" "-i" url-string))
-         (proc (apply 'start-process
-                      (append (list curl-name (generate-new-buffer curl-name)) args))))
+         (args `("curl" "--silent" "--include"
+                 ,@(if (string= "HEAD" url-request-method)
+                       (list "--head")
+                     (list "--request" url-request-method))
+                 ,@(if url-request-data (list "--data-binary" "@-") '())
+                 ,@(curl-for-url--headers-to-args url-request-extra-headers)
+                 ,url-string))
+         (proc (let ((process-connection-type nil))
+                 (apply 'start-process
+                        curl-name (generate-new-buffer curl-name) args))))
+    (when url-request-data
+      (set-process-coding-system proc 'binary 'binary)
+      (process-send-string proc url-request-data)
+      (process-send-eof proc))
     (with-current-buffer (process-buffer proc) ; stuff ripped out of url-http
       (mm-disable-multibyte)
       (setq url-current-object url mode-line-format "%b [%s]")
@@ -120,10 +138,17 @@
                      url-http-connection-opened
                      url-http-proxy))
         (set (make-local-variable var) nil))
-      (setq url-http-method (or url-request-method "GET")
+      (setq url-http-method url-request-method
             url-http-extra-headers url-request-extra-headers
             url-http-data url-request-data
-            url-http-process connection
+            ;; `url-http' will close the connection if:
+            ;;
+            ;;   - There is not a "Connection: keep-alive" header (HTTP/1.0)
+            ;;   - There is a "Connection: close" header (HTTP/1.1 and greater)
+            ;;
+            ;; That means `url-http-process' cannot be `nil'.  We have to
+            ;; assign it to a process object.
+            url-http-process proc
             url-http-chunked-length nil
             url-http-chunked-start nil
             url-http-chunked-counter 0
@@ -134,10 +159,11 @@
             url-http-no-retry retry-buffer
             url-http-connection-opened nil
             url-http-proxy url-using-proxy))
-    (set-process-sentinel proc 'curl/sentinel)))
+    (set-process-sentinel proc 'curl/sentinel)
+    (process-buffer proc)))
 
 (defun url-http-with-curl (url callback cbargs &optional retry-buffer)
-  (curl-call url callback cbargs))
+  (curl-call url callback cbargs retry-buffer))
 
 (defvar curl-url-retrieve-original nil)
 
