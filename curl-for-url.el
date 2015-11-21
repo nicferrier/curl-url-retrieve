@@ -89,7 +89,7 @@
                    (list "--header" (format "%s: %s" (car pair) (cdr pair))))
                  headers)))
 
-(defun curl-call (url data callback cbargs)
+(defun curl-call (url callback cbargs &optional retry-buffer)
   "Do curl for url-retrieval."
   (let* ((url-string (format "%s://%s:%s%s"
                              (url-type url)
@@ -162,7 +162,7 @@
     (process-buffer proc)))
 
 (defun url-http-with-curl (url callback cbargs &optional retry-buffer)
-  (curl-call url nil callback cbargs))
+  (curl-call url callback cbargs retry-buffer))
 
 (defvar curl-url-retrieve-original nil)
 
